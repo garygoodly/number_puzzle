@@ -1,0 +1,1 @@
+python play_web_solver_fast.py --size 8 --channel msedge --astar-weight 2.0
