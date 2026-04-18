@@ -145,12 +145,53 @@ def apply_solution_in_browser(
         if move_delay_ms > 0:
             page.wait_for_timeout(move_delay_ms)
 
+def submit_name(page, name: str) -> None:
+    print(f"\n🏆 準備霸榜！等待 HTML 通關畫面跳出，準備刻上大名：【{name}】")
+    try:
+        # 1. 稍微等一下動畫播完
+        page.wait_for_timeout(2000) 
+        
+        # 2. 抓取畫面上最後一個可見的輸入框
+        input_locator = page.locator("input:visible").last
+        input_locator.wait_for(state="visible", timeout=5000)
+        
+        # 3. 點擊獲取焦點
+        input_locator.click()
+        page.wait_for_timeout(200)
+        
+        # 4. 全選並刪除 (強制清掉預設的 "匿名玩家")
+        input_locator.press("Control+A")
+        input_locator.press("Backspace")
+        page.wait_for_timeout(200)
+        
+        # 5. 模擬真人逐字打字！這樣絕對能觸發網頁框架的更新事件
+        input_locator.press_sequentially(name, delay=100)
+        page.wait_for_timeout(500)
+        
+        # 6. 按下 Enter
+        input_locator.press("Enter")
+        page.wait_for_timeout(500)
+        
+        # 7. 防呆：如果有確認按鈕就點擊
+        button_texts = ["確認", "確定", "送出", "Submit", "OK", "保存"]
+        selectors = [f"button:has-text('{txt}'):visible" for txt in button_texts] + [f".btn:has-text('{txt}'):visible" for txt in button_texts]
+        for sel in selectors:
+            try:
+                btn = page.locator(sel).first
+                if btn.is_visible():
+                    btn.click()
+                    break
+            except:
+                pass
+                
+        print("✅ HTML 大名輸入流程執行完畢！")
+        page.wait_for_timeout(2000) # 讓你有時間肉眼確認
+        
+    except Exception as e:
+        # 如果找不到 HTML 輸入框，有可能是被下面的原生攔截器處理掉了，不報錯
+        pass
 
 def auto_timeout_sec(size: int, scale: float) -> float:
-    """
-    Heuristic timeout schedule for large boards.
-    Tuned to rise quickly with board size.
-    """
     if size <= 3:
         base = 20.0
     elif size == 4:
@@ -160,33 +201,23 @@ def auto_timeout_sec(size: int, scale: float) -> float:
     elif size == 6:
         base = 240.0
     else:
-        # Grow faster for larger boards.
         base = 240.0 + ((size - 6) ** 2) * 90.0
-
     return max(5.0, base * scale)
 
 
 def auto_subgoal_expansions(size: int) -> int:
-    if size <= 3:
-        return 200_000
-    if size == 4:
-        return 500_000
-    if size == 5:
-        return 1_000_000
-    if size == 6:
-        return 2_000_000
+    if size <= 3: return 200_000
+    if size == 4: return 500_000
+    if size == 5: return 1_000_000
+    if size == 6: return 2_000_000
     return int(2_000_000 + (size - 6) * 1_000_000)
 
 
 def auto_final_expansions(size: int) -> int:
-    if size <= 3:
-        return 1_000_000
-    if size == 4:
-        return 2_000_000
-    if size == 5:
-        return 5_000_000
-    if size == 6:
-        return 8_000_000
+    if size <= 3: return 1_000_000
+    if size == 4: return 2_000_000
+    if size == 5: return 5_000_000
+    if size == 6: return 8_000_000
     return int(8_000_000 + (size - 6) * 2_000_000)
 
 
@@ -203,64 +234,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--manual", action="store_true")
+    
+    # 🌟 新增：名字參數
     parser.add_argument(
-        "--timeout-sec",
-        type=float,
-        default=None,
-        help="Override solver timeout. If omitted, timeout grows automatically with size.",
+        "--name", 
+        type=str, 
+        default="腳本好難", 
+        help="自動在通關後填入排行榜的大名 (例如: OrthoLoc_Master)"
     )
-    parser.add_argument(
-        "--timeout-scale",
-        type=float,
-        default=1.0,
-        help="Multiplier applied to the automatic timeout schedule.",
-    )
+    
+    parser.add_argument("--timeout-sec", type=float, default=None)
+    parser.add_argument("--timeout-scale", type=float, default=1.0)
     parser.add_argument("--move-delay-ms", type=int, default=20)
-    parser.add_argument(
-        "--channel",
-        type=str,
-        default="msedge",
-        choices=["msedge", "chrome"],
-    )
-    parser.add_argument(
-        "--astar-weight",
-        type=float,
-        default=1.8,
-        help="Weighted A* factor inside StrategicNPuzzleSolver. Larger is greedier/faster, less optimal.",
-    )
-    parser.add_argument(
-        "--subgoal-max-expansions",
-        type=int,
-        default=None,
-        help="Override max expansions for subgoal searches.",
-    )
-    parser.add_argument(
-        "--final-max-expansions",
-        type=int,
-        default=None,
-        help="Override max expansions for final-stage searches.",
-    )
+    parser.add_argument("--channel", type=str, default="msedge", choices=["msedge", "chrome"])
+    parser.add_argument("--astar-weight", type=float, default=1.8)
+    parser.add_argument("--subgoal-max-expansions", type=int, default=None)
+    parser.add_argument("--final-max-expansions", type=int, default=None)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
 
-    timeout_sec = (
-        float(args.timeout_sec)
-        if args.timeout_sec is not None
-        else auto_timeout_sec(args.size, args.timeout_scale)
-    )
-    subgoal_max_expansions = (
-        int(args.subgoal_max_expansions)
-        if args.subgoal_max_expansions is not None
-        else auto_subgoal_expansions(args.size)
-    )
-    final_max_expansions = (
-        int(args.final_max_expansions)
-        if args.final_max_expansions is not None
-        else auto_final_expansions(args.size)
-    )
+    timeout_sec = float(args.timeout_sec) if args.timeout_sec is not None else auto_timeout_sec(args.size, args.timeout_scale)
+    subgoal_max_expansions = int(args.subgoal_max_expansions) if args.subgoal_max_expansions is not None else auto_subgoal_expansions(args.size)
+    final_max_expansions = int(args.final_max_expansions) if args.final_max_expansions is not None else auto_final_expansions(args.size)
 
     solver = StrategicNPuzzleSolver(
         size=args.size,
@@ -290,6 +288,18 @@ def main() -> None:
             context = browser.new_context(no_viewport=True)
 
         page = context.new_page()
+        # ==========================================
+        # 🌟 終極防禦：原生彈窗 (window.prompt) 攔截器
+        # ==========================================
+        def handle_dialog(dialog):
+            if dialog.type == "prompt" and args.name:
+                print(f"\n💬 [系統攔截] 偵測到原生輸入框！自動霸氣填入：【{args.name}】")
+                dialog.accept(args.name)
+            else:
+                dialog.accept()
+        page.on("dialog", handle_dialog)
+        # ==========================================
+        
         page.goto(args.url, wait_until="domcontentloaded")
         page.locator("body").wait_for(state="visible", timeout=10000)
 
@@ -303,7 +313,6 @@ def main() -> None:
         if not selected:
             print(f"Warning: explicit size click for {args.size}x{args.size} did not succeed.")
 
-        # Only check the challenge confirmation after choosing size.
         click_start_after_size(page)
 
         if args.manual:
@@ -322,8 +331,12 @@ def main() -> None:
         print(f"search wall time: {elapsed:.4f}s")
 
         if solution is None:
-            raise RuntimeError("Solver did not find a solution within the given limits.")
-
+            raise RuntimeError("Solver 完全沒有回傳路徑！")
+        elif not stats.solved:
+            print(f"\n⚠️ 警告：只找到「部分解法」({len(solution)} 步)！將執行到卡關處暫停供人類觀察...")
+        else:
+            print(f"\n✅ 成功找到完整解法！共 {len(solution)} 步。")
+            
         print("solution length:", len(solution))
 
         apply_solution_in_browser(
@@ -333,6 +346,14 @@ def main() -> None:
             solution=solution,
             move_delay_ms=args.move_delay_ms,
         )
+
+        # 🌟 觸發命名機制
+        if args.name:
+            # 如果終端機有下 --name 參數，就自動暴力填表
+            submit_name(page, args.name)
+        else:
+            # 💡 如果沒給 --name，代表你要看心情。把網頁留在這，讓你親手在瀏覽器上操作！
+            print("\n🏆 通關啦！如果畫面上出現了輸入框，請直接用滑鼠點擊網頁，輸入你當下想叫的名字吧！")
 
         print("Done. Close the browser window or press Ctrl+C to exit.")
         try:
