@@ -8,8 +8,7 @@ from typing import Sequence, Tuple
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from npuzzle_large_solver import StrategicNPuzzleSolver
-
+from npuzzle_all_size_solver import StrategicNPuzzleSolver
 
 def click_first_visible(page, selectors: Sequence[str], timeout_ms: int = 3000) -> bool:
     for selector in selectors:
