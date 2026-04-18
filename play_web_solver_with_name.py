@@ -229,22 +229,21 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="https://superglutenman0312.github.io/number_puzzle/",
     )
-    parser.add_argument("--size", type=int, default=3)
-    parser.add_argument("--headless", action="store_true")
-    parser.add_argument("--fullscreen", action="store_true")
-    parser.add_argument("--manual", action="store_true")
-    
-    # 🌟 新增：名字參數
+        # 🌟 新增：名字參數
     parser.add_argument(
         "--name", 
         type=str, 
-        default="腳本好難", 
+        default="Browniebro", 
         help="自動在通關後填入排行榜的大名 (例如: OrthoLoc_Master)"
     )
     
+    parser.add_argument("--size", type=int, default=8)
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--fullscreen", action="store_true")
+    parser.add_argument("--manual", action="store_true")
     parser.add_argument("--timeout-sec", type=float, default=None)
     parser.add_argument("--timeout-scale", type=float, default=1.0)
-    parser.add_argument("--move-delay-ms", type=int, default=20)
+    parser.add_argument("--move-delay-ms", type=int, default=15)
     parser.add_argument("--channel", type=str, default="msedge", choices=["msedge", "chrome"])
     parser.add_argument("--astar-weight", type=float, default=1.8)
     parser.add_argument("--subgoal-max-expansions", type=int, default=None)
