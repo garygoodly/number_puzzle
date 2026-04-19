@@ -3,6 +3,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Set, Tuple
+import heapq
 
 @dataclass
 class PlanStats:
@@ -56,44 +57,74 @@ class StrategicNPuzzleSolver:
                         q.append((nxt, path + [act]))
         return None
 
+
+
     def _push_tile_joint(self, board, moves, tile_val, target_idx, locked):
         start_tile = board.index(tile_val)
         start_blank = board.index(0)
-        if start_tile == target_idx: return
-            
-        q = deque([(start_tile, start_blank)])
-        visited = {(start_tile, start_blank): (None, None)}
+        if start_tile == target_idx:
+            return
+
+        def manhattan(idx1, idx2):
+            r1, c1 = divmod(idx1, self.size)
+            r2, c2 = divmod(idx2, self.size)
+            return abs(r1 - r2) + abs(c1 - c2)
+
+        # heuristic：tile 到目標距離 + (小權重) blank 靠近 tile
+        def h(tile, blank):
+            return manhattan(tile, target_idx) + 0.3 * manhattan(blank, tile)
+
+        # A*
+        heap = []
+        # (f, g, tile_pos, blank_pos)
+        start_h = h(start_tile, start_blank)
+        heapq.heappush(heap, (start_h, 0, start_tile, start_blank))
+
+        visited = {(start_tile, start_blank): (None, None)}  # parent, action
+
         found_state = None
-        
-        while q:
-            curr_tile, curr_blank = q.popleft()
+
+        while heap:
+            f, g, tile, blank = heapq.heappop(heap)
             self.expanded_nodes += 1
-            if curr_tile == target_idx:
-                found_state = (curr_tile, curr_blank)
+
+            if tile == target_idx:
+                found_state = (tile, blank)
                 break
-                
-            br, bc = self.idx_to_pos(curr_blank)
+
+            br, bc = divmod(blank, self.size)
+
             for act, (dr, dc) in ACTION_DELTAS.items():
                 nr, nc = br + dr, bc + dc
                 if 0 <= nr < self.size and 0 <= nc < self.size:
-                    nxt_blank = self.pos_to_idx((nr, nc))
-                    if nxt_blank not in locked:
-                        nxt_tile = curr_blank if nxt_blank == curr_tile else curr_tile
-                        nxt_state = (nxt_tile, nxt_blank)
-                        if nxt_state not in visited:
-                            visited[nxt_state] = ((curr_tile, curr_blank), act)
-                            q.append(nxt_state)
-                            
+                    nxt_blank = nr * self.size + nc
+                    if nxt_blank in locked:
+                        continue
+
+                    # tile 會被 blank 推動
+                    nxt_tile = blank if nxt_blank == tile else tile
+                    state = (nxt_tile, nxt_blank)
+
+                    if state in visited:
+                        continue
+
+                    visited[state] = ((tile, blank), act)
+                    new_g = g + 1
+                    new_f = new_g + h(nxt_tile, nxt_blank)
+                    heapq.heappush(heap, (new_f, new_g, nxt_tile, nxt_blank))
+
         if found_state is None:
             raise RuntimeError(f"發生死結：無法將方塊 {tile_val} 推至目標位置。")
-            
+
+        # reconstruct path
         path = []
         curr = found_state
         while visited[curr][0] is not None:
-            prev_state, act = visited[curr]
+            prev, act = visited[curr]
             path.append(act)
-            curr = prev_state
+            curr = prev
         path.reverse()
+
         self._apply_path(board, moves, path)
 
     def _optimize_path(self, moves: List[int]) -> List[int]:
@@ -228,3 +259,5 @@ class StrategicNPuzzleSolver:
             optimized_moves = self._optimize_path(moves)
             elapsed = time.perf_counter() - start_time
             return optimized_moves, PlanStats(False, len(optimized_moves), elapsed, self.expanded_nodes, phases)
+
+    
