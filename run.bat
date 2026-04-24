@@ -1,1 +1,0 @@
-python play_web_solver_fast.py --channel chrome --astar-weight 2.0 --size 5
